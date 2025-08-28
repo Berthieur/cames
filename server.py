@@ -7,76 +7,73 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# URL WebSocket de l'ESP32-CAM (update with your public IP and port)
-ESP32_CAM_WS_URL = "ws://129.222.109.22:12345"  # Replace with your public IP and forwarded port
-PORT = int(os.getenv("PORT", 8000))  # Render assigns PORT; default to 8000 for local testing
+# Port assigné par Render (ou 8000 pour tests locaux)
+PORT = int(os.getenv("PORT", 8000))
 
-# Set to store connected Android clients
-clients = set()
+# Stockage des clients connectés
+esp32_clients = set()  # Clients ESP32-CAM
+android_clients = set()  # Clients Android
 
-async def connect_to_esp32():
+async def handle_client(websocket, path):
     """
-    Connect to the ESP32-CAM WebSocket server and relay images to clients.
+    Gérer les connexions WebSocket des clients ESP32-CAM et Android.
     """
-    while True:
-        try:
-            async with websockets.connect(
-                ESP32_CAM_WS_URL,
-                timeout=10,
-                ping_interval=10,
-                ping_timeout=10
-            ) as esp32_socket:
-                logger.info(f"Connecté au WebSocket de l'ESP32-CAM: {ESP32_CAM_WS_URL}")
-                async for message in esp32_socket:
-                    # Relay images to all connected Android clients
-                    for client in clients:
+    # Identifier le type de client basé sur le chemin ou un message initial
+    try:
+        # Attendre un message initial pour identifier le client
+        initial_message = await websocket.recv()
+        if initial_message == "esp32-cam":
+            logger.info("ESP32-CAM connecté")
+            esp32_clients.add(websocket)
+            try:
+                async for message in websocket:
+                    # Relayer les images de l'ESP32-CAM vers tous les clients Android
+                    for client in android_clients:
                         if not client.closed:
                             try:
                                 await client.send(message)
                             except Exception as e:
-                                logger.error(f"Erreur lors de l'envoi au client: {e}")
-        except Exception as e:
-            logger.error(f"Erreur WebSocket ESP32-CAM: {e}, URL: {ESP32_CAM_WS_URL}")
-            await asyncio.sleep(5)  # Wait before retrying
-
-async def handle_client(websocket, path):
-    """
-    Handle incoming Android client connections and relay commands to ESP32-CAM.
-    """
-    logger.info("Nouveau client Android connecté")
-    clients.add(websocket)
-    try:
-        async for message in websocket:
-            # Relay commands (e.g., start-stream, flash-on, flash-off) to ESP32-CAM
-            try:
-                async with websockets.connect(
-                    ESP32_CAM_WS_URL,
-                    timeout=10,
-                    ping_interval=10,
-                    ping_timeout=10
-                ) as esp32_socket:
-                    await esp32_socket.send(message)
-                    logger.info(f"Commande envoyée à l'ESP32-CAM: {message}")
+                                logger.error(f"Erreur lors de l'envoi au client Android: {e}")
             except Exception as e:
-                logger.error(f"Erreur lors de l'envoi de la commande à l'ESP32-CAM: {e}, URL: {ESP32_CAM_WS_URL}")
-                error_message = f'{{"error": "ESP32-CAM non connecté: {str(e)}"}}'
-                try:
-                    await websocket.send(error_message)
-                except Exception as e:
-                    logger.error(f"Erreur lors de l'envoi de l'erreur au client: {e}")
+                logger.error(f"Erreur avec l'ESP32-CAM: {e}")
+            finally:
+                esp32_clients.remove(websocket)
+                logger.info("ESP32-CAM déconnecté")
+        elif initial_message == "android-client":
+            logger.info("Client Android connecté")
+            android_clients.add(websocket)
+            try:
+                async for message in websocket:
+                    # Relayer les commandes (ex. : start-stream, flash-on, flash-off) à l'ESP32-CAM
+                    for esp32 in esp32_clients:
+                        if not esp32.closed:
+                            try:
+                                await esp32.send(message)
+                                logger.info(f"Commande envoyée à l'ESP32-CAM: {message}")
+                            except Exception as e:
+                                logger.error(f"Erreur lors de l'envoi à l'ESP32-CAM: {e}")
+                    # Envoyer un message d'erreur si aucun ESP32-CAM n'est connecté
+                    if not esp32_clients:
+                        error_message = '{"error": "Aucun ESP32-CAM connecté"}'
+                        try:
+                            await websocket.send(error_message)
+                        except Exception as e:
+                            logger.error(f"Erreur lors de l'envoi de l'erreur au client Android: {e}")
+            except Exception as e:
+                logger.error(f"Erreur avec le client Android: {e}")
+            finally:
+                android_clients.remove(websocket)
+                logger.info("Client Android déconnecté")
+        else:
+            logger.warning(f"Client inconnu avec message initial: {initial_message}")
+            await websocket.close()
     except Exception as e:
-        logger.error(f"Erreur WebSocket client: {e}")
-    finally:
-        clients.remove(websocket)
-        logger.info("Client Android déconnecté")
+        logger.error(f"Erreur lors de l'identification du client: {e}")
 
 async def main():
     """
-    Start the WebSocket server and the ESP32-CAM connection task.
+    Démarrer le serveur WebSocket.
     """
-    # Start the task to connect to ESP32-CAM
-    asyncio.create_task(connect_to_esp32())
-    # Start the WebSocket server for Android clients
     try:
         server = await websockets.serve(handle_client, "0.0.0.0", PORT)
         logger.info(f"Serveur WebSocket démarré sur le port {PORT}")
