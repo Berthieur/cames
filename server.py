@@ -6,41 +6,35 @@ from logtail import LogtailHandler
 
 # Configuration des logs
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)  # Activer DEBUG pour plus de détails
 
-# Configuration du gestionnaire Logtail (facultatif)
-logtail_token = os.getenv("LOGTAIL_TOKEN", "")  # Ajoutez LOGTAIL_TOKEN dans Render
+# Configuration du gestionnaire Logtail
+logtail_token = os.getenv("LOGTAIL_TOKEN", "")
 if logtail_token:
     handler = LogtailHandler(source_token=logtail_token)
 else:
     handler = logging.StreamHandler()
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
 logger.addHandler(handler)
 
-# Port assigné par Render (utilisez le port par défaut de Render, souvent 10000)
 PORT = int(os.getenv("PORT", 10000))
-
-# Stockage des clients connectés
 esp32_clients = set()
 android_clients = set()
 
 async def handle_client(websocket, path):
-    """
-    Gérer les connexions WebSocket des clients ESP32-CAM et Android.
-    """
     client_ip = websocket.remote_address[0]
     logger.info(f"Nouvelle connexion depuis {client_ip}, chemin: {path}")
+    logger.debug(f"En-têtes WebSocket: {websocket.request_headers}")
     try:
-        # Attendre un message initial avec timeout
         initial_message = await asyncio.wait_for(websocket.recv(), timeout=5.0)
         logger.info(f"Message initial reçu de {client_ip}: {initial_message}")
-
         if initial_message == "esp32-cam":
             logger.info(f"ESP32-CAM connecté depuis {client_ip}")
             esp32_clients.add(websocket)
             try:
                 async for message in websocket:
                     logger.info(f"Message reçu de l'ESP32-CAM ({client_ip}): {len(message)} octets")
-                    # Relayer les images aux clients Android
                     for client in android_clients:
                         if not client.closed:
                             try:
@@ -59,7 +53,6 @@ async def handle_client(websocket, path):
             try:
                 async for message in websocket:
                     logger.info(f"Commande reçue du client Android ({client_ip}): {message}")
-                    # Relayer les commandes à l'ESP32-CAM
                     for esp32 in esp32_clients:
                         if not esp32.closed:
                             try:
@@ -90,9 +83,6 @@ async def handle_client(websocket, path):
         await websocket.close(code=1000, reason="Erreur serveur")
 
 async def main():
-    """
-    Démarrer le serveur WebSocket.
-    """
     try:
         server = await websockets.serve(handle_client, "0.0.0.0", PORT)
         logger.info(f"Serveur WebSocket démarré sur le port {PORT}")
