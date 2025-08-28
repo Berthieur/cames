@@ -23,6 +23,7 @@ itsdangerous==2.2.0
 Jinja2==3.1.6
 keras==3.10.0
 libclang==18.1.1
+logtail-python>=0.2.0  # Pour l'intégration Logtail (facultatif)
 Markdown==3.8.2
 markdown-it-py==3.0.0
 MarkupSafe==3.0.2
@@ -47,7 +48,6 @@ rich==14.1.0
 schedule==1.2.2
 simple-websocket==1.1.0
 six==1.17.0
-
 tzdata==2025.2
 urllib3==2.5.0
 websocket-client==1.8.0
