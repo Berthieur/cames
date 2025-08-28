@@ -8,7 +8,6 @@ click==8.2.1
 colorama==0.4.6
 dnspython==2.7.0
 eventlet==0.40.2
-Flask @ file:///D:/projet%20de%20soutenance/SERVEUR/Serveur%20python/packages/flask-3.1.1.tar.gz
 flask-cors==6.0.1
 Flask-SocketIO==5.5.1
 flatbuffers==25.2.10
