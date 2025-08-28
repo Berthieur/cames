@@ -47,12 +47,7 @@ rich==14.1.0
 schedule==1.2.2
 simple-websocket==1.1.0
 six==1.17.0
-tensorboard==2.19.0
-tensorboard-data-server==0.7.2
-tensorflow==2.19.0
-tensorflow-io-gcs-filesystem==0.31.0
-termcolor==3.1.0
-typing_extensions==4.14.1
+
 tzdata==2025.2
 urllib3==2.5.0
 websocket-client==1.8.0
